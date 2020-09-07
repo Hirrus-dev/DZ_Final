@@ -1,0 +1,16 @@
+---
+- name: Build server configuration
+  hosts: Build-1
+  become: yes
+
+  roles:
+#    - Nexus
+    - Build
+
+- name: Product server configuration
+  hosts: Production-1
+  become: yes
+  
+  roles:
+    - Production
+  

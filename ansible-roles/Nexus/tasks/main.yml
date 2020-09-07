@@ -1,0 +1,159 @@
+---
+# tasks file for Nexus
+- name: Install packages
+  apt: 
+    name: ['openjdk-8-jdk','nano']
+  #apt: name={{ item }} state=present
+  #with_items:
+  #- default-jdk
+  #- nano
+
+- name: Create Nexus group
+  group: name={{ nexus_os_group }} state=present
+
+- name: Create Nexus user
+  user: name={{ nexus_os_user }} group={{ nexus_os_group }} shell={{ nexus_os_user_shell }} state=present
+  
+- name: Create Nexus installation directory
+  file:
+    path: "{{ nexus_installation_dir }}"
+    state: "directory"
+
+- name: Download Nexus package
+  get_url: url=https://download.sonatype.com/nexus/3/latest-unix.tar.gz dest={{ nexus_download_dir }}
+
+- name: Unpack Nexus package
+  unarchive:
+    src: "{{ nexus_download_dir }}/{{ nexus_package }}"
+    dest: "{{ nexus_installation_dir }}"
+    copy: false
+    owner: "{{ nexus_os_user }}"
+    group: "{{ nexus_os_group }}"
+    mode: "0755"
+
+- name: Ensure proper ownership of nexus installation directory
+  file:
+    path: "{{ nexus_installation_dir }}/nexus-{{ nexus_version }}"
+    owner: "{{ nexus_os_user }}"
+    group: "{{ nexus_os_group }}"
+    recurse: yes
+    mode: "u=rwX,g=rX,o=rX"
+
+- name: Ensure proper ownership of sonatype-work directory
+  file:
+    path: "{{ nexus_installation_dir }}/sonatype-work"
+    owner: "{{ nexus_os_user }}"
+    group: "{{ nexus_os_group }}"
+    recurse: yes
+    mode: "u=rwX,g=rX,o=rX"
+
+
+- name: Add a line to a file if the file does not exist, without passing regexp
+  lineinfile:
+    path={{ nexus_installation_dir }}/nexus-{{ nexus_version }}/bin/nexus.rc
+    line=run_as_user="nexus"
+    create=yes
+
+- name: Create Nexus directory for PID file
+  file:
+    path=/var/run/nexus
+    owner={{ nexus_os_user }}
+    group={{ nexus_os_group }}
+    state=directory
+
+- name: Create Nexus workdir
+  file:
+    path={{ nexus_working_dir }}
+    owner={{ nexus_os_user }}
+    group={{ nexus_os_group }}
+    state=directory
+
+- name: Copy files to data dir
+  copy:
+    src: "{{ nexus_installation_dir }}/sonatype-work/nexus3/"
+    dest: "{{ nexus_working_dir }}/"
+    remote_src: yes
+    owner: "{{ nexus_os_user }}"
+    group: "{{ nexus_os_group }}"
+
+- name: Add a line to a file if the file does not exist, without passing regexp
+  lineinfile:
+    path={{ nexus_installation_dir }}/nexus-{{ nexus_version }}/bin/nexus.vmoptions
+    line=-Dinstall4j.pidDir=/var/run/nexus
+    create=yes
+
+- name: edit a Dkaraf.data
+  lineinfile:
+    path: "{{ nexus_installation_dir }}/nexus-{{ nexus_version }}/bin/nexus.vmoptions"
+    regexp: "^-Dkaraf.data=.*"
+    line: "-Dkaraf.data={{ nexus_working_dir }}"
+
+- name: edit a Dkaraf.log
+  lineinfile:
+    path: "{{ nexus_installation_dir }}/nexus-{{ nexus_version }}/bin/nexus.vmoptions"
+    regexp: "^-Dkaraf.log=.*"
+    line: "-Dkaraf.log={{ nexus_working_dir }}/log"
+
+- name: Create systemd service configuration
+  template:
+    src: "nexus.service"
+    dest: "/etc/systemd/system"
+  notify:
+    - systemd-reload
+
+#- name: Create settings file
+#  copy:
+#    src: "{{ nexus_installation_dir }}/nexus-{{ nexus_version }}/etc/nexus-default.properties"
+#    dest: "{{ nexus_installation_dir }}/nexus-{{ nexus_version }}/etc/nexus.properties"
+#    remote_src: yes
+#    owner: "{{ nexus_os_user }}"
+#    group: "{{ nexus_os_group }}"
+
+- name: Get path to settings
+  set_fact:
+    nexus_default_settings_file: "{{ nexus_installation_dir }}/nexus-{{ nexus_version }}/etc/nexus-default.properties"
+  
+- name: Set nexus port
+  lineinfile:
+    dest: "{{ nexus_default_settings_file }}"
+    regexp: "^application-port=.*"
+    line: "application-port={{ nexus_port }}"
+  notify:
+    - nexus-service-restart
+
+
+#- name: Configure workdir
+#  lineinfile:
+#    dest: "{{ nexus_default_settings_file }}"
+#    line: "nexus-work={{ nexus_working_dir }}"
+#    regexp: "^nexus-work=.*"
+#    state: present
+#  notify:
+#    - nexus-service-restart
+
+
+#sudo ln -s /opt/nexus-3.15.2-01/bin/nexus /etc/init.d/nexus
+
+#- name: Create symlink bin/nexus in init.d
+#  file:
+#    src={{ nexus_installation_dir }}/nexus-{{ nexus_version }}/bin/nexus
+#    dest=/etc/init.d/nexus
+#    owner={{ nexus_os_user }}
+#    group={{ nexus_os_group }}
+#    state=link
+
+#- name: Create symlink nexus-latest
+#  file:
+#    src={{ nexus_installation_dir }}/nexus-{{ nexus_version }}
+#    dest={{ nexus_installation_dir }}/nexus-latest
+#    owner={{ nexus_os_user }}
+#    group={{ nexus_os_group }}
+#    state=link
+
+#- name: Check if sonatype working directory exists
+#  stat: path={{ nexus_installation_dir }}/sonatype-work
+#  register: s_w
+
+#- name: Move existing sonatype working directory into specified working dir
+#  command: mv {{ nexus_installation_dir }}/sonatype-work {{ nexus_working_dir }}
+#  when: s_w.stat.exists

@@ -1,0 +1,87 @@
+---
+# tasks file for Build
+    - name: Install packages
+      apt: 
+        update_cache: yes
+        name: ['docker.io','python3-pip']
+
+    - pip:
+        executable: pip3
+        name: docker
+
+    - name: Ensure directory is present
+      file:
+        path: /home/ansible/build/
+        state: directory
+
+    - name: Ensure directory is present
+      file:
+        path: /home/ansible/product/
+        state: directory
+
+    - name: (DEBUG) Allow RSYNC for new super user without SUDO password
+      lineinfile:
+          path: /etc/sudoers
+          state: present
+          insertafter: '^%sudo'
+          #line: "ansible ALL=NOPASSWD: /usr/bin/rsync"
+          line: "ansible ALL=NOPASSWD: ALL"
+
+    - name: Copy build files
+      template:
+        src: dockerfile.j2
+        dest: /home/ansible/build/dockerfile
+
+#- name: Build maven container
+#  docker_image:
+#    name: build-container:latest
+#    path: /home/ansible/build
+
+#- name: Start maven container
+#  docker_container:
+#    name: build-container
+#    image: build-container:latest
+#    volumes:
+#      - /home/ansible/product:/tmp
+
+#- name: Remove maven container
+#  docker_container:
+#    name: build-container
+#    image: build-container:latest
+#    state: absent
+
+    - name: Copy dockerfile for tomcat8
+      synchronize:
+        src: dockerfile.tomcat8
+        dest: /home/ansible/product/dockerfile
+
+    - name: Create Docker registry
+      docker_container:
+        name: registry
+        image: registry:2
+        published_ports: 5000:5000
+        state: started
+
+#- name: Build an image and push it to a private repo
+#  docker_image:
+#    build:
+#      path: /home/ansible/product
+#    name: localhost:5000/app
+#    tag: latest
+#    push: yes
+#    source: build
+  
+
+#- name: Start tomcat8 container
+#  docker_container:
+#    name: product-container
+#    image: build-container:latest
+    #state: present
+#    volumes:
+#      - /opt:/tmp
+
+#- name: Copy artefact
+#  synchronize:
+#    mode: pull
+#    src: /opt/ROOT.war
+#    dest: Build/files/ROOT.war

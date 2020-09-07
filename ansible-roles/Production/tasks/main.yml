@@ -1,0 +1,56 @@
+---
+# tasks file for Production
+- name: Install packages
+  apt: 
+    update_cache: yes
+    name: ['docker.io','python3-pip','docker-compose']
+
+- pip:
+    executable: pip3
+    name: docker
+
+#- pip:
+#    executable: pip3
+#    name: docker-compose
+
+- name: (DEBUG) Allow RSYNC for new super user without SUDO password
+  lineinfile:
+      path: /etc/sudoers
+      state: present
+      insertafter: '^%sudo'
+      line: "ansible ALL=NOPASSWD: ALL"
+      #line: "ansible ALL=NOPASSWD: /usr/bin/rsync"
+
+- name: Ensure directory is present
+  file:
+    path: /home/ansible/app/
+    state: directory
+
+- name: Copy config files for docker
+  template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+
+- name: Restart service docker
+  service:
+    name: docker
+    state: restarted
+
+#- name: Pull image from repo
+#  docker_image:
+#    build:
+#      path: /home/ansible/product
+#    name: "{{ ipregistry }}:5000/app"
+#    tag: "{{tag}}"
+#    source: pull
+
+- name: Copy docker-compose file for app
+  template:
+    #mode: pull
+    src: docker-compose.yml
+    dest: /home/ansible/app/docker-compose.yml
+
+#- name: Start app
+#  docker_compose:
+#    project_src: /home/ansible/app/
+#    state: present

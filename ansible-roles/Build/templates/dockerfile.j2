@@ -1,0 +1,8 @@
+FROM maven:alpine
+RUN apk update &&\
+    apk add git
+WORKDIR /home/build
+RUN git clone {{repo}}
+WORKDIR /home/build/{{build_dir}}
+RUN mvn package
+ENTRYPOINT cp target/*.war /tmp/ROOT.war
