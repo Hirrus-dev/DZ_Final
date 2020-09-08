@@ -1,0 +1,60 @@
+pipeline{
+    agent any
+    
+    stages{
+        stage("terraform"){
+            environment {
+				AWS_ACCESS_KEY = credentials('AWS_ACCESS_KEY')
+				AWS_SECRET KEY = credentials('AWS_SECRET KEY')
+			}
+            steps{
+                dir ("/home/ubuntu/tf_aws") {
+                    sh 'terraform init'
+                    sh 'terraform plan -var "aws_accesskey=${AWS_ACCESS_KEY}"  -var "aws_secretkey=${AWS_SECRET KEY}" -out App.tfplan'
+                    sh 'terraform apply App.tfplan'
+                }
+            }
+        }
+        stage("ansible"){
+            environment {
+				SUDO_PASS = credentials('secretVault')
+			}
+			steps{
+			    dir ("/home/ubuntu/ansible-roles") {
+		            ansiblePlaybook(installation: "Ansible-1",
+								    vaultCredentialsId: "secretVault",
+									inventory: "hosts",
+									playbook: "general.yml",
+									become: true,
+									becomeUser: "root"
+									)
+			    }
+			}
+        }
+        stage('Run docker on Build server') {
+            steps {
+                dir ("/home/ubuntu/ansible-roles") {
+                    sh '''ssh ansible@$(cat ip.build) <<EOF
+                        sudo docker build --tag build-container:latest /home/ansible/build
+                        sudo docker run --rm -v /home/ansible/product:/tmp build-container:latest
+                        sudo docker build --tag app:latest /home/ansible/product
+                        sudo docker tag app:latest localhost:5000/app:latest
+                        sudo docker push localhost:5000/app:latest
+EOF'''          
+                }
+            }
+        }
+        stage('Run docker on Product server') {
+            steps {
+                dir ("/home/ubuntu/ansible-roles") {
+                    sh 'scp ip.build ansible@$(cat ip.production):/home/ansible/'
+                    sh '''ssh ansible@$(cat ip.production) <<EOF
+                        sudo docker pull $(cat ip.build):5000/app:latest
+                        cd  /home/ansible/app/
+                        sudo docker-compose up -d
+EOF'''          
+                }
+            }
+        }
+    }
+}
